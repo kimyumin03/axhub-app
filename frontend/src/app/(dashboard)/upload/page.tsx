@@ -90,7 +90,7 @@ export default function UploadPage() {
   const canUpload = !!mappedCustomerText;
 
   return (
-    <div className="p-8 max-w-3xl space-y-6">
+    <div className="p-8 space-y-6">
       {/* 헤더 */}
       <div className="flex items-start justify-between">
         <div>

@@ -193,7 +193,7 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             {/* 불만 TOP5 */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">불만 카테고리 TOP 5</h3>
