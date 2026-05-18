@@ -58,23 +58,38 @@ def _auto_detect_mapping(columns: list[str]) -> dict[str, str]:
     return result
 
 
-SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".txt"}
+
+
+def _parse_to_df(content: bytes, ext: str) -> pd.DataFrame:
+    buf = io.BytesIO(content)
+    if ext in (".csv", ".txt"):
+        # 구분자 자동 감지 시도
+        try:
+            df = pd.read_csv(buf, dtype=str, sep=None, engine="python")
+            # 컬럼이 1개면 구분자 없는 순수 텍스트로 간주
+            if len(df.columns) == 1:
+                raise ValueError("single column")
+            return df
+        except Exception:
+            # 한 줄 = 리뷰 하나 형식
+            buf.seek(0)
+            lines = [l.strip() for l in buf.read().decode("utf-8", errors="replace").splitlines() if l.strip()]
+            return pd.DataFrame({"customerText": lines})
+    else:
+        return pd.read_excel(buf, dtype=str)
 
 
 async def _read_file(file: UploadFile) -> tuple[pd.DataFrame, bytes]:
     filename = file.filename or ""
     ext = next((e for e in SUPPORTED_EXTENSIONS if filename.lower().endswith(e)), None)
     if ext is None:
-        raise HTTPException(status_code=400, detail="CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다.")
+        raise HTTPException(status_code=400, detail="CSV, Excel(xlsx/xls), TXT 파일만 업로드 가능합니다.")
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail=f"파일 크기는 {MAX_FILE_SIZE // (1024 * 1024)}MB를 초과할 수 없습니다.")
     try:
-        buf = io.BytesIO(content)
-        if ext == ".csv":
-            df = pd.read_csv(buf, dtype=str)
-        else:
-            df = pd.read_excel(buf, dtype=str)
+        df = _parse_to_df(content, ext)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"파일을 읽을 수 없습니다: {e}")
     return df, content
@@ -103,6 +118,11 @@ def _df_chunks(content: bytes, ext: str):
     buf = io.BytesIO(content)
     if ext == ".csv":
         yield from pd.read_csv(buf, dtype=str, chunksize=CHUNK_SIZE)
+    elif ext == ".txt":
+        # txt는 구분자 감지 후 전체 로드 → 슬라이스
+        df = _parse_to_df(content, ext)
+        for start in range(0, len(df), CHUNK_SIZE):
+            yield df.iloc[start:start + CHUNK_SIZE].reset_index(drop=True)
     else:
         df = pd.read_excel(buf, dtype=str)
         for start in range(0, len(df), CHUNK_SIZE):
@@ -120,7 +140,7 @@ async def upload_csv(
     filename = file.filename or ""
     ext = next((e for e in SUPPORTED_EXTENSIONS if filename.lower().endswith(e)), None)
     if ext is None:
-        raise HTTPException(status_code=400, detail="CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다.")
+        raise HTTPException(status_code=400, detail="CSV, Excel(xlsx/xls), TXT 파일만 업로드 가능합니다.")
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
