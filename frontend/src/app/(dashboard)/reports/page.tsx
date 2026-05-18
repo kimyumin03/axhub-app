@@ -2,12 +2,48 @@
 import { useEffect, useState } from "react";
 import { reportApi } from "@/lib/api";
 
+interface TopIssue { category: string; count: number; }
+interface RisingKw { keyword: string; count: number; change: string; }
+interface ProductIssue { name: string; count: number; }
+interface Summary {
+  total: number; negative_ratio: number; negative_count: number;
+  top_product_issues: ProductIssue[];
+}
 interface Report {
   id: number; title: string; start_date: string; end_date: string; created_at: string;
-  summary: { total: number; negative_ratio: number; negative_count: number; top_product_issues: { name: string; count: number }[] };
-  top_issues: { category: string; count: number }[];
-  rising_keywords: { keyword: string; count: number; change: string }[];
+  summary: Summary; top_issues: TopIssue[]; rising_keywords: RisingKw[];
   improvement_suggestions: string[];
+}
+
+const PRIORITY_COLOR = ["bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-blue-400", "bg-gray-300"];
+
+function KpiCard({ label, value, sub, accent = false }: { label: string; value: string | number; sub?: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-xl border p-4 ${accent ? "bg-red-50 border-red-100" : "bg-white border-gray-200"}`}>
+      <p className="text-xs text-gray-500 font-medium">{label}</p>
+      <p className={`text-3xl font-bold mt-1 ${accent ? "text-red-600" : "text-gray-900"}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function SuggestionCard({ text, index }: { text: string; index: number }) {
+  const colors = [
+    "border-red-200 bg-red-50 text-red-900",
+    "border-orange-200 bg-orange-50 text-orange-900",
+    "border-yellow-200 bg-yellow-50 text-yellow-900",
+    "border-blue-200 bg-blue-50 text-blue-900",
+    "border-gray-200 bg-gray-50 text-gray-800",
+  ];
+  const icons = ["🚨", "⚠️", "📌", "💡", "📋"];
+  return (
+    <div className={`border rounded-xl p-4 ${colors[index % colors.length]}`}>
+      <div className="flex gap-3">
+        <span className="text-lg shrink-0">{icons[index % icons.length]}</span>
+        <p className="text-sm leading-relaxed">{text}</p>
+      </div>
+    </div>
+  );
 }
 
 export default function ReportsPage() {
@@ -15,19 +51,17 @@ export default function ReportsPage() {
   const [selected, setSelected] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [form, setForm] = useState({ title: "", start_date: "", end_date: "" });
   const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: "", start_date: "", end_date: "" });
   const [error, setError] = useState("");
 
-  async function loadReports() {
-    try { const r = await reportApi.list(); setReports(r.data); } finally { setLoading(false); }
-  }
-
-  useEffect(() => { loadReports(); }, []);
+  useEffect(() => {
+    reportApi.list().then((r) => { setReports(r.data); if (r.data.length > 0) setSelected(r.data[0]); })
+      .finally(() => setLoading(false));
+  }, []);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.start_date || !form.end_date) return;
     setGenerating(true); setError("");
     try {
       const r = await reportApi.generate(form);
@@ -40,16 +74,19 @@ export default function ReportsPage() {
     } finally { setGenerating(false); }
   }
 
+  const maxIssueCount = selected?.top_issues[0]?.count ?? 1;
+
   return (
     <div className="p-8 space-y-6">
+      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">리포트</h2>
-          <p className="text-sm text-gray-500 mt-1">기간별 VOC 분석 리포트를 생성하세요.</p>
+          <p className="text-sm text-gray-500 mt-1">기간별 VOC 분석 리포트 — 경영진 의사결정용</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-          + 새 리포트
+          + 새 리포트 생성
         </button>
       </div>
 
@@ -61,144 +98,178 @@ export default function ReportsPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">리포트 제목</label>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required
-              placeholder="예: 2025년 5월 3주차 VOC 분석"
+              placeholder="예: 2025년 5월 3주차 주간 VOC 분석"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">시작일</label>
-              <input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} required
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">종료일</label>
-              <input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} required
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
+            {(["start_date", "end_date"] as const).map((f) => (
+              <div key={f} className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {f === "start_date" ? "시작일" : "종료일"}
+                </label>
+                <input type="date" value={form[f]} onChange={(e) => setForm({ ...form, [f]: e.target.value })} required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            ))}
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={generating}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
               {generating ? "생성 중..." : "리포트 생성"}
             </button>
-            <button type="button" onClick={() => setShowForm(false)}
+            <button type="button" onClick={() => { setShowForm(false); setError(""); }}
               className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">취소</button>
           </div>
         </form>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="flex gap-6">
         {/* 리포트 목록 */}
-        <div className="space-y-2">
+        <div className="w-64 shrink-0 space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">리포트 목록</p>
           {loading ? (
             <p className="text-sm text-gray-400 text-center py-8">불러오는 중...</p>
           ) : reports.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-4xl mb-3">📋</p>
-              <p className="text-sm text-gray-400">리포트가 없습니다.<br />새 리포트를 생성해보세요.</p>
+            <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-200">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="text-xs text-gray-400">리포트가 없습니다</p>
             </div>
           ) : (
             reports.map((r) => (
               <button key={r.id} onClick={() => setSelected(r)}
-                className={`w-full text-left p-4 rounded-xl border transition-colors ${
-                  selected?.id === r.id ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                  selected?.id === r.id
+                    ? "border-blue-300 bg-blue-50 shadow-sm"
+                    : "border-gray-200 bg-white hover:bg-gray-50"
                 }`}>
-                <p className="font-medium text-sm text-gray-800 truncate">{r.title}</p>
-                <p className="text-xs text-gray-400 mt-1">{r.start_date} ~ {r.end_date}</p>
-                <p className="text-xs text-gray-300 mt-0.5">{r.created_at?.slice(0, 10)}</p>
+                <p className="font-medium text-sm text-gray-800 line-clamp-2 leading-snug">{r.title}</p>
+                <p className="text-xs text-gray-400 mt-1.5">{r.start_date} ~ {r.end_date}</p>
+                {r.summary && (
+                  <div className="flex gap-2 mt-2">
+                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{r.summary.total}건</span>
+                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{r.summary.negative_ratio}% 부정</span>
+                  </div>
+                )}
               </button>
             ))
           )}
         </div>
 
-        {/* 리포트 상세 */}
+        {/* 리포트 본문 */}
         {selected ? (
-          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6 space-y-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">{selected.title}</h3>
-                <p className="text-sm text-gray-400 mt-0.5">{selected.start_date} ~ {selected.end_date}</p>
+          <div className="flex-1 space-y-6">
+            {/* 보고서 헤더 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">VOC 분석 리포트</p>
+                  <h3 className="text-xl font-bold text-gray-900 mt-1">{selected.title}</h3>
+                  <p className="text-sm text-gray-500 mt-1">분석 기간: {selected.start_date} ~ {selected.end_date}</p>
+                </div>
+                <p className="text-xs text-gray-400">{selected.created_at?.slice(0, 10)} 생성</p>
+              </div>
+
+              {/* KPI 요약 */}
+              <div className="grid grid-cols-3 gap-4 mt-5">
+                <KpiCard label="분석 기간 VOC" value={selected.summary.total.toLocaleString()} sub="건" />
+                <KpiCard label="부정 의견 비율" value={`${selected.summary.negative_ratio}%`} sub={`${selected.summary.negative_count}건 부정`} accent />
+                <KpiCard label="최다 불만 카테고리" value={selected.top_issues[0]?.category ?? "—"} sub={`${selected.top_issues[0]?.count ?? 0}건`} />
               </div>
             </div>
 
-            {/* 요약 지표 */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-gray-900">{selected.summary.total}</p>
-                <p className="text-xs text-gray-500">전체 VOC</p>
-              </div>
-              <div className="bg-red-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-red-500">{selected.summary.negative_ratio}%</p>
-                <p className="text-xs text-gray-500">부정 비율</p>
-              </div>
-              <div className="bg-orange-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-orange-500">{selected.summary.negative_count}</p>
-                <p className="text-xs text-gray-500">부정 건수</p>
-              </div>
-            </div>
-
-            {/* 불만 TOP5 */}
+            {/* 불만 TOP 5 */}
             {selected.top_issues.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">불만 TOP 5</h4>
-                <div className="space-y-2">
+              <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <h4 className="text-sm font-bold text-gray-700 mb-4">불만 카테고리 TOP {selected.top_issues.length}</h4>
+                <div className="space-y-3">
                   {selected.top_issues.map((item, i) => (
-                    <div key={item.category} className="flex items-center gap-3 text-sm">
-                      <span className="text-xs text-gray-400 w-4">{i + 1}</span>
-                      <span className="flex-1 text-gray-700">{item.category}</span>
-                      <span className="font-semibold text-gray-900">{item.count}건</span>
+                    <div key={item.category} className="flex items-center gap-4">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${PRIORITY_COLOR[i] ?? "bg-gray-300"}`}>
+                        {i + 1}
+                      </span>
+                      <div className="flex-1">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium text-gray-800">{item.category}</span>
+                          <span className="text-gray-500 tabular-nums">{item.count}건</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full ${PRIORITY_COLOR[i] ?? "bg-gray-300"}`}
+                            style={{ width: `${(item.count / maxIssueCount) * 100}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* 급증 키워드 */}
-            {selected.rising_keywords.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">급증 키워드</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selected.rising_keywords.map((kw) => (
-                    <span key={kw.keyword} className="flex items-center gap-1 bg-orange-50 border border-orange-100 text-orange-700 text-xs px-2.5 py-1 rounded-full">
-                      {kw.keyword} <span className="text-orange-500 font-bold">{kw.change}</span>
-                    </span>
-                  ))}
+            {/* 급증 키워드 + 제품/지점 */}
+            <div className="grid grid-cols-2 gap-4">
+              {selected.rising_keywords.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <h4 className="text-sm font-bold text-gray-700 mb-3">급증 키워드</h4>
+                  <div className="space-y-2">
+                    {selected.rising_keywords.map((kw) => (
+                      <div key={kw.keyword} className="flex items-center justify-between py-1.5 border-b border-gray-50">
+                        <span className="text-sm text-gray-800 font-medium">{kw.keyword}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">{kw.count}건</span>
+                          <span className="text-xs font-bold text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full">{kw.change}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {selected.summary.top_product_issues?.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <h4 className="text-sm font-bold text-gray-700 mb-3">제품별 부정 VOC</h4>
+                  <div className="space-y-2">
+                    {selected.summary.top_product_issues.map((p, i) => (
+                      <div key={p.name} className="flex items-center justify-between py-1.5 border-b border-gray-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 w-4">{i + 1}</span>
+                          <span className="text-sm text-gray-800">{p.name}</span>
+                        </div>
+                        <span className="text-xs font-semibold text-red-500">{p.count}건</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* AI 개선 제안 */}
             {selected.improvement_suggestions.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">AI 개선 제안</h4>
+              <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <h4 className="text-sm font-bold text-gray-700">AI 개선 제안</h4>
+                  <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                    {selected.improvement_suggestions.length}건
+                  </span>
+                </div>
                 <div className="space-y-3">
                   {selected.improvement_suggestions.map((s, i) => (
-                    <div key={i} className="flex gap-3 bg-blue-50 rounded-lg p-3">
-                      <span className="text-blue-400 font-bold text-sm shrink-0">{i + 1}</span>
-                      <p className="text-sm text-blue-800">{s}</p>
-                    </div>
+                    <SuggestionCard key={i} text={s} index={i} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* 제품/지점 이슈 */}
-            {selected.summary.top_product_issues?.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">제품/지점별 부정 VOC</h4>
-                <div className="space-y-1">
-                  {selected.summary.top_product_issues.map((p) => (
-                    <div key={p.name} className="flex justify-between text-sm py-1.5 border-b border-gray-50">
-                      <span className="text-gray-700">{p.name}</span>
-                      <span className="text-red-500 font-medium">{p.count}건</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* PDF 다운로드 (추후 연동용 placeholder) */}
+            <div className="flex justify-end">
+              <button disabled
+                className="flex items-center gap-2 text-sm text-gray-400 border border-gray-200 rounded-lg px-4 py-2 cursor-not-allowed"
+                title="PDF 다운로드는 추후 지원 예정입니다">
+                ↓ PDF 다운로드 (준비 중)
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="lg:col-span-2 flex items-center justify-center border border-dashed border-gray-200 rounded-xl py-20">
+          <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-xl">
             <div className="text-center text-gray-400">
               <p className="text-4xl mb-3">◈</p>
               <p className="text-sm">좌측에서 리포트를 선택하거나<br />새 리포트를 생성하세요.</p>

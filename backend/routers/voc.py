@@ -12,56 +12,90 @@ import models
 router = APIRouter(prefix="/voc", tags=["voc"])
 
 REQUIRED_COLUMNS = {"id", "createdAt", "sourceType", "customerText"}
+VALID_SOURCE_TYPES = {"review", "inquiry", "complaint"}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def _parse_date(raw: str):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return pd.to_datetime(raw, format=fmt).to_pydatetime()
+        except Exception:
+            pass
+    try:
+        return pd.to_datetime(raw).to_pydatetime()
+    except Exception:
+        return None
 
 
 @router.post("/upload")
 async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    if not file.filename.endswith(".csv"):
+    if not (file.filename or "").endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드 가능합니다.")
 
     content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="파일 크기는 10MB를 초과할 수 없습니다.")
+
     try:
-        df = pd.read_csv(io.BytesIO(content))
-    except Exception:
-        raise HTTPException(status_code=400, detail="CSV 파일을 읽을 수 없습니다.")
+        df = pd.read_csv(io.BytesIO(content), dtype=str)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"CSV 파일을 읽을 수 없습니다: {e}")
 
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
-        raise HTTPException(status_code=400, detail=f"필수 컬럼 누락: {', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=f"필수 컬럼 누락: {', '.join(sorted(missing))}")
 
-    df = df.dropna(subset=["customerText"])
-    df["customerText"] = df["customerText"].astype(str).str.strip()
+    df["customerText"] = df["customerText"].fillna("").str.strip()
     df = df[df["customerText"] != ""]
 
-    success, failed, errors = 0, 0, []
+    success, failed = 0, 0
+    failed_rows: list[dict] = []
 
-    for _, row in df.iterrows():
-        try:
-            created_at = None
-            raw_date = str(row.get("createdAt", ""))
-            if raw_date and raw_date != "nan":
-                try:
-                    created_at = pd.to_datetime(raw_date).to_pydatetime()
-                except Exception:
-                    errors.append(f"id={row.get('id', '?')}: 날짜 형식 오류 ({raw_date})")
+    for row_num, (_, row) in enumerate(df.iterrows(), start=2):  # 2 = header가 1행
+        ext_id = str(row.get("id", "")).strip() or f"ROW-{row_num}"
+        text_preview = str(row.get("customerText", ""))[:60]
+
+        # 날짜 파싱
+        created_at = None
+        raw_date = str(row.get("createdAt", "")).strip()
+        if raw_date and raw_date.lower() != "nan":
+            created_at = _parse_date(raw_date)
+            if created_at is None:
+                failed += 1
+                failed_rows.append({"row": row_num, "id": ext_id, "reason": f"날짜 형식 오류: '{raw_date}'", "preview": text_preview})
+                continue
+
+        # sourceType 검증
+        source_type = str(row.get("sourceType", "inquiry")).strip().lower()
+        if source_type not in VALID_SOURCE_TYPES:
+            source_type = "inquiry"  # 오류 대신 기본값 처리
+
+        # rating 검증
+        rating = None
+        raw_rating = str(row.get("rating", "")).strip()
+        if raw_rating and raw_rating.lower() != "nan":
+            try:
+                rating = float(raw_rating)
+                if not (1.0 <= rating <= 5.0):
+                    failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 범위 오류: {rating} (1~5)", "preview": text_preview})
                     failed += 1
                     continue
+            except ValueError:
+                failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 형식 오류: '{raw_rating}'", "preview": text_preview})
+                failed += 1
+                continue
 
-            rating = None
-            raw_rating = row.get("rating")
-            if raw_rating is not None and str(raw_rating) != "nan":
-                try:
-                    rating = float(raw_rating)
-                except Exception:
-                    pass
-
+        try:
+            product = str(row.get("productName", "")).strip()
+            branch = str(row.get("branchName", "")).strip()
             record = models.VocRecord(
                 user_id=user.id,
-                external_id=str(row.get("id", "")),
+                external_id=ext_id,
                 created_at=created_at,
-                source_type=str(row.get("sourceType", "inquiry")),
-                product_name=str(row.get("productName", "")) or None,
-                branch_name=str(row.get("branchName", "")) or None,
+                source_type=source_type,
+                product_name=product if product and product.lower() != "nan" else None,
+                branch_name=branch if branch and branch.lower() != "nan" else None,
                 customer_text=str(row["customerText"]),
                 rating=rating,
             )
@@ -81,10 +115,15 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
         except Exception as e:
             failed += 1
-            errors.append(f"id={row.get('id', '?')}: {str(e)}")
+            failed_rows.append({"row": row_num, "id": ext_id, "reason": str(e), "preview": text_preview})
 
     db.commit()
-    return {"total": success + failed, "success": success, "failed": failed, "errors": errors[:10]}
+    return {
+        "total": success + failed,
+        "success": success,
+        "failed": failed,
+        "failed_rows": failed_rows[:20],
+    }
 
 
 @router.get("/records")
