@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/auth";
 const NAV = [
   { href: "/dashboard", label: "대시보드", icon: "▦" },
   { href: "/voc", label: "고객 피드백", icon: "≡" },
-  { href: "/upload", label: "CSV 업로드", icon: "↑" },
+  { href: "/upload", label: "데이터 업로드", icon: "↑" },
   { href: "/reports", label: "리포트", icon: "◈" },
 ];
 

@@ -94,7 +94,7 @@ export default function UploadPage() {
       {/* 헤더 */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">CSV 업로드</h2>
+          <h2 className="text-2xl font-bold text-gray-900">데이터 업로드</h2>
           <p className="text-sm text-gray-500 mt-1">고객 피드백 데이터를 업로드하면 자동으로 분류·분석합니다.</p>
         </div>
         <button onClick={downloadTemplate}
