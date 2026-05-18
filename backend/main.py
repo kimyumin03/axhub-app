@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from database import engine
+import models
+from routers import auth, voc, reports
 
-app = FastAPI()
+models.Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="VOC SaaS API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -11,10 +16,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/")
-def root():
-    return {"message": "Hello from FastAPI"}
+app.include_router(auth.router)
+app.include_router(voc.router)
+app.include_router(reports.router)
 
 
 @app.get("/health")
