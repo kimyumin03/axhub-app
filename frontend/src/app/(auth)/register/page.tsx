@@ -31,7 +31,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">VOC Analytics</h1>
+          <h1 className="text-3xl font-bold text-gray-900">피드백 분석</h1>
           <p className="text-gray-500 mt-2">고객 분류 & 제품 개선 리포트</p>
         </div>
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 space-y-5">

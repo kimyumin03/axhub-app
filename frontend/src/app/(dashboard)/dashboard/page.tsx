@@ -74,19 +74,19 @@ export default function DashboardPage() {
     <div className="p-8 space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">대시보드</h2>
-        <p className="text-sm text-gray-500 mt-1">전체 VOC 현황을 한눈에 확인하세요.</p>
+        <p className="text-sm text-gray-500 mt-1">고객 피드백 현황을 한눈에 확인하세요.</p>
       </div>
 
       {data.total === 0 ? (
-        <EmptyState message="VOC 데이터가 없습니다. CSV를 업로드해주세요." />
+        <EmptyState message="고객 피드백이 없습니다. 데이터를 불러와주세요." />
       ) : (
         <>
           {/* 주요 지표 */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="전체 VOC" value={data.total.toLocaleString()} sub="건" />
-            <StatCard label="부정 VOC 비율" value={`${data.negative_ratio}%`} color="text-red-500" />
-            <StatCard label="부정 VOC" value={data.sentiment_distribution.negative ?? 0} sub="건" color="text-red-400" />
-            <StatCard label="긍정 VOC" value={data.sentiment_distribution.positive ?? 0} sub="건" color="text-green-500" />
+            <StatCard label="전체 피드백" value={data.total.toLocaleString()} sub="건" />
+            <StatCard label="부정 피드백 비율" value={`${data.negative_ratio}%`} color="text-red-500" />
+            <StatCard label="부정 피드백" value={data.sentiment_distribution.negative ?? 0} sub="건" color="text-red-400" />
+            <StatCard label="긍정 피드백" value={data.sentiment_distribution.positive ?? 0} sub="건" color="text-green-500" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -169,10 +169,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* VOC 추이 */}
+          {/* 피드백 추이 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">VOC 추이</h3>
+              <h3 className="text-sm font-semibold text-gray-700">피드백 추이</h3>
               <div className="flex gap-2">
                 {(["7","30"] as const).map((d) => (
                   <button key={d} onClick={() => setTrend(d)}
@@ -217,7 +217,7 @@ export default function DashboardPage() {
 
             {/* 제품/지점별 부정 VOC */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">제품/지점별 부정 VOC 순위</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">제품/지점별 부정 피드백 순위</h3>
               {data.product_issue_ranking.length === 0 ? <EmptyState message="데이터 없음" /> : (
                 <div className="space-y-2">
                   {data.product_issue_ranking.slice(0, 8).map((item, i) => (

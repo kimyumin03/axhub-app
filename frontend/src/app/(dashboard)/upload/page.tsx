@@ -53,7 +53,7 @@ export default function UploadPage() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">CSV 업로드</h2>
-          <p className="text-sm text-gray-500 mt-1">VOC 데이터를 CSV 파일로 업로드하면 AI가 자동으로 분류·분석합니다.</p>
+          <p className="text-sm text-gray-500 mt-1">고객 피드백 데이터를 CSV 파일로 업로드하면 AI가 자동으로 분류·분석합니다.</p>
         </div>
         <button onClick={downloadTemplate}
           className="flex items-center gap-2 text-sm text-blue-600 border border-blue-200 rounded-lg px-3 py-2 hover:bg-blue-50 transition-colors">

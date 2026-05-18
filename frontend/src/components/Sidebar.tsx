@@ -5,7 +5,7 @@ import { useAuthStore } from "@/store/auth";
 
 const NAV = [
   { href: "/dashboard", label: "대시보드", icon: "▦" },
-  { href: "/voc", label: "VOC 데이터", icon: "≡" },
+  { href: "/voc", label: "고객 피드백", icon: "≡" },
   { href: "/upload", label: "CSV 업로드", icon: "↑" },
   { href: "/reports", label: "리포트", icon: "◈" },
 ];
@@ -23,7 +23,7 @@ export default function Sidebar() {
   return (
     <aside className="w-60 shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
       <div className="px-6 py-5 border-b border-gray-100">
-        <h1 className="text-lg font-bold text-blue-600">VOC Analytics</h1>
+        <h1 className="text-lg font-bold text-blue-600">피드백 분석</h1>
         <p className="text-xs text-gray-400 mt-0.5">운영 대시보드</p>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1">

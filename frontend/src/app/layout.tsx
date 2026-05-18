@@ -5,8 +5,8 @@ import "./globals.css";
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "VOC Analytics — 고객 분류 & 리포트",
-  description: "AI 기반 VOC 자동 분류 및 제품 개선 리포트 SaaS",
+  title: "피드백 분석 — 고객 피드백 분류 & 리포트",
+  description: "AI 기반 고객 피드백 자동 분류 및 제품 개선 리포트 SaaS",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

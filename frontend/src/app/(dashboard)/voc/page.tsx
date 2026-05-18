@@ -45,7 +45,7 @@ export default function VocPage() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">VOC 데이터</h2>
+        <h2 className="text-2xl font-bold text-gray-900">고객 피드백</h2>
         <p className="text-sm text-gray-500 mt-1">총 {total.toLocaleString()}건</p>
       </div>
 
@@ -79,7 +79,7 @@ export default function VocPage() {
         ) : items.length === 0 ? (
           <div className="py-20 text-center">
             <p className="text-4xl mb-3">📭</p>
-            <p className="text-gray-400 text-sm">조건에 맞는 VOC가 없습니다.</p>
+            <p className="text-gray-400 text-sm">조건에 맞는 피드백이 없습니다.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

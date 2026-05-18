@@ -82,7 +82,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">리포트</h2>
-          <p className="text-sm text-gray-500 mt-1">기간별 VOC 분석 리포트 — 경영진 의사결정용</p>
+          <p className="text-sm text-gray-500 mt-1">기간별 피드백 분석 리포트 — 경영진 의사결정용</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
@@ -98,7 +98,7 @@ export default function ReportsPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">리포트 제목</label>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required
-              placeholder="예: 2025년 5월 3주차 주간 VOC 분석"
+              placeholder="예: 2025년 5월 3주차 주간 피드백 분석"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex gap-4">
@@ -162,7 +162,7 @@ export default function ReportsPage() {
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">VOC 분석 리포트</p>
+                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">피드백 분석 리포트</p>
                   <h3 className="text-xl font-bold text-gray-900 mt-1">{selected.title}</h3>
                   <p className="text-sm text-gray-500 mt-1">분석 기간: {selected.start_date} ~ {selected.end_date}</p>
                 </div>
@@ -171,7 +171,7 @@ export default function ReportsPage() {
 
               {/* KPI 요약 */}
               <div className="grid grid-cols-3 gap-4 mt-5">
-                <KpiCard label="분석 기간 VOC" value={selected.summary.total.toLocaleString()} sub="건" />
+                <KpiCard label="분석 기간 피드백" value={selected.summary.total.toLocaleString()} sub="건" />
                 <KpiCard label="부정 의견 비율" value={`${selected.summary.negative_ratio}%`} sub={`${selected.summary.negative_count}건 부정`} accent />
                 <KpiCard label="최다 불만 카테고리" value={selected.top_issues[0]?.category ?? "—"} sub={`${selected.top_issues[0]?.count ?? 0}건`} />
               </div>
@@ -226,7 +226,7 @@ export default function ReportsPage() {
 
               {selected.summary.top_product_issues?.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <h4 className="text-sm font-bold text-gray-700 mb-3">제품별 부정 VOC</h4>
+                  <h4 className="text-sm font-bold text-gray-700 mb-3">제품별 부정 피드백</h4>
                   <div className="space-y-2">
                     {selected.summary.top_product_issues.map((p, i) => (
                       <div key={p.name} className="flex items-center justify-between py-1.5 border-b border-gray-50">
