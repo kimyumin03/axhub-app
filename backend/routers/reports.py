@@ -56,6 +56,15 @@ def get_report(report_id: int, db: Session = Depends(get_db), user: models.User 
     return _serialize(report)
 
 
+@router.delete("/{report_id}", status_code=204)
+def delete_report(report_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    report = db.query(models.Report).filter(models.Report.id == report_id, models.Report.user_id == user.id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+    db.delete(report)
+    db.commit()
+
+
 def _serialize(r: models.Report) -> dict:
     return {
         "id": r.id,

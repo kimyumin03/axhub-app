@@ -51,6 +51,7 @@ export default function ReportsPage() {
   const [selected, setSelected] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", start_date: "", end_date: "" });
   const [error, setError] = useState("");
@@ -59,6 +60,16 @@ export default function ReportsPage() {
     reportApi.list().then((r) => { setReports(r.data); if (r.data.length > 0) setSelected(r.data[0]); })
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleDelete(id: number) {
+    if (!confirm("이 리포트를 삭제하시겠습니까?")) return;
+    setDeletingId(id);
+    try {
+      await reportApi.delete(id);
+      setReports((prev) => prev.filter((r) => r.id !== id));
+      if (selected?.id === id) setSelected(null);
+    } finally { setDeletingId(null); }
+  }
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -136,21 +147,29 @@ export default function ReportsPage() {
             </div>
           ) : (
             reports.map((r) => (
-              <button key={r.id} onClick={() => setSelected(r)}
-                className={`w-full text-left p-3.5 rounded-xl border transition-all ${
-                  selected?.id === r.id
-                    ? "border-blue-300 bg-blue-50 shadow-sm"
-                    : "border-gray-200 bg-white hover:bg-gray-50"
-                }`}>
-                <p className="font-medium text-sm text-gray-800 line-clamp-2 leading-snug">{r.title}</p>
-                <p className="text-xs text-gray-400 mt-1.5">{r.start_date} ~ {r.end_date}</p>
-                {r.summary && (
-                  <div className="flex gap-2 mt-2">
-                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{r.summary.total}건</span>
-                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{r.summary.negative_ratio}% 부정</span>
-                  </div>
-                )}
-              </button>
+              <div key={r.id} className={`rounded-xl border transition-all ${
+                selected?.id === r.id ? "border-blue-300 bg-blue-50 shadow-sm" : "border-gray-200 bg-white"
+              }`}>
+                <button onClick={() => setSelected(r)} className="w-full text-left p-3.5">
+                  <p className="font-medium text-sm text-gray-800 line-clamp-2 leading-snug">{r.title}</p>
+                  <p className="text-xs text-gray-400 mt-1.5">{r.start_date} ~ {r.end_date}</p>
+                  {r.summary && (
+                    <div className="flex gap-2 mt-2">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{r.summary.total}건</span>
+                      <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{r.summary.negative_ratio}% 부정</span>
+                    </div>
+                  )}
+                </button>
+                <div className="px-3.5 pb-2.5 flex justify-end">
+                  <button
+                    onClick={() => handleDelete(r.id)}
+                    disabled={deletingId === r.id}
+                    className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                  >
+                    {deletingId === r.id ? "삭제 중..." : "삭제"}
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>

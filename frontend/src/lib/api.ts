@@ -34,9 +34,15 @@ export const authApi = {
 };
 
 export const vocApi = {
-  upload: (file: File) => {
+  preview: (file: File) => {
     const form = new FormData();
     form.append("file", file);
+    return api.post("/voc/preview", form);
+  },
+  upload: (file: File, mapping: Record<string, string> = {}) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("mapping", JSON.stringify(mapping));
     return api.post("/voc/upload", form);
   },
   records: (params: Record<string, string | number>) =>
@@ -49,4 +55,5 @@ export const reportApi = {
   get: (id: number) => api.get(`/reports/${id}`),
   generate: (data: { title: string; start_date: string; end_date: string }) =>
     api.post("/reports/generate", data),
+  delete: (id: number) => api.delete(`/reports/${id}`),
 };

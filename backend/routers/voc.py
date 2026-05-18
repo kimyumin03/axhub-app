@@ -1,6 +1,7 @@
 import io
+import json
 from datetime import datetime
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 import pandas as pd
@@ -11,9 +12,24 @@ import models
 
 router = APIRouter(prefix="/voc", tags=["voc"])
 
-REQUIRED_COLUMNS = {"id", "createdAt", "sourceType", "customerText"}
 VALID_SOURCE_TYPES = {"review", "inquiry", "complaint"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# 내부 필드명 → 흔히 쓰이는 컬럼명 패턴 (자동 매핑 추천용)
+AUTO_DETECT: dict[str, list[str]] = {
+    "customerText": ["customertext", "customer_text", "review_text", "content", "body",
+                     "text", "message", "comment", "feedback", "description",
+                     "내용", "문의내용", "리뷰내용", "고객의견", "본문"],
+    "createdAt":    ["createdat", "created_at", "date", "created_date", "reg_date",
+                     "timestamp", "날짜", "등록일", "작성일", "접수일"],
+    "sourceType":   ["sourcetype", "source_type", "type", "category", "분류", "유형"],
+    "id":           ["id", "no", "seq", "번호", "순번"],
+    "productName":  ["productname", "product_name", "product", "item", "goods",
+                     "상품명", "상품", "제품명", "제품"],
+    "branchName":   ["branchname", "branch_name", "branch", "store", "location",
+                     "지점명", "지점", "매장", "지역"],
+    "rating":       ["rating", "score", "star", "grade", "평점", "별점", "점수"],
+}
 
 
 def _parse_date(raw: str):
@@ -28,37 +44,110 @@ def _parse_date(raw: str):
         return None
 
 
-@router.post("/upload")
-async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    if not (file.filename or "").endswith(".csv"):
-        raise HTTPException(status_code=400, detail="CSV 파일만 업로드 가능합니다.")
+def _auto_detect_mapping(columns: list[str]) -> dict[str, str]:
+    """CSV 컬럼명을 보고 내부 필드로 자동 추천."""
+    lower_cols = {c.lower().replace(" ", "").replace("_", ""): c for c in columns}
+    result: dict[str, str] = {}
+    for field, patterns in AUTO_DETECT.items():
+        for pat in patterns:
+            key = pat.lower().replace(" ", "").replace("_", "")
+            if key in lower_cols:
+                result[field] = lower_cols[key]
+                break
+    return result
 
+
+SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+
+
+async def _read_file(file: UploadFile) -> tuple[pd.DataFrame, bytes]:
+    filename = file.filename or ""
+    ext = next((e for e in SUPPORTED_EXTENSIONS if filename.lower().endswith(e)), None)
+    if ext is None:
+        raise HTTPException(status_code=400, detail="CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다.")
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="파일 크기는 10MB를 초과할 수 없습니다.")
+    try:
+        buf = io.BytesIO(content)
+        if ext == ".csv":
+            df = pd.read_csv(buf, dtype=str)
+        else:
+            df = pd.read_excel(buf, dtype=str)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"파일을 읽을 수 없습니다: {e}")
+    return df, content
+
+
+@router.post("/preview")
+async def preview_csv(
+    file: UploadFile = File(...),
+    user: models.User = Depends(get_current_user),
+):
+    """1단계: CSV 컬럼명 + 샘플 3행 + 자동 매핑 추천 반환."""
+    df, _ = await _read_file(file)
+    columns = list(df.columns)
+    sample = df.head(3).fillna("").to_dict(orient="records")
+    suggested = _auto_detect_mapping(columns)
+    return {
+        "columns": columns,
+        "sample_rows": sample,
+        "total_rows": len(df),
+        "suggested_mapping": suggested,
+    }
+
+
+@router.post("/upload")
+async def upload_csv(
+    file: UploadFile = File(...),
+    mapping: str = Form(default="{}"),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """2단계: 매핑 정보를 받아 실제 분석·저장."""
+    df, _ = await _read_file(file)
 
     try:
-        df = pd.read_csv(io.BytesIO(content), dtype=str)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"CSV 파일을 읽을 수 없습니다: {e}")
+        col_map: dict[str, str] = json.loads(mapping)
+    except Exception:
+        raise HTTPException(status_code=400, detail="mapping 형식이 올바르지 않습니다.")
 
-    missing = REQUIRED_COLUMNS - set(df.columns)
-    if missing:
-        raise HTTPException(status_code=400, detail=f"필수 컬럼 누락: {', '.join(sorted(missing))}")
+    # 매핑이 없으면 컬럼명 자동 감지로 폴백
+    if not col_map:
+        col_map = _auto_detect_mapping(list(df.columns))
 
-    df["customerText"] = df["customerText"].fillna("").str.strip()
-    df = df[df["customerText"] != ""]
+    def _get(row: pd.Series, field: str, default: str = "") -> str:
+        csv_col = col_map.get(field)
+        if csv_col and csv_col in row.index:
+            return str(row[csv_col]).strip()
+        # 매핑 없으면 동일 이름 컬럼 직접 시도
+        if field in row.index:
+            return str(row[field]).strip()
+        return default
+
+    customer_text_col = col_map.get("customerText", "customerText")
+    if customer_text_col not in df.columns and "customerText" not in df.columns:
+        raise HTTPException(status_code=400, detail="고객 원문 컬럼을 지정해주세요.")
+
+    # 고객 원문 컬럼 기준으로 빈 행 제거
+    text_col = customer_text_col if customer_text_col in df.columns else "customerText"
+    df[text_col] = df[text_col].fillna("").str.strip()
+    df = df[df[text_col] != ""]
 
     success, failed = 0, 0
     failed_rows: list[dict] = []
 
-    for row_num, (_, row) in enumerate(df.iterrows(), start=2):  # 2 = header가 1행
-        ext_id = str(row.get("id", "")).strip() or f"ROW-{row_num}"
-        text_preview = str(row.get("customerText", ""))[:60]
+    for row_num, (_, row) in enumerate(df.iterrows(), start=2):
+        customer_text = _get(row, "customerText")
+        if not customer_text:
+            continue
+
+        ext_id = _get(row, "id") or f"ROW-{row_num}"
+        text_preview = customer_text[:60]
 
         # 날짜 파싱
         created_at = None
-        raw_date = str(row.get("createdAt", "")).strip()
+        raw_date = _get(row, "createdAt")
         if raw_date and raw_date.lower() != "nan":
             created_at = _parse_date(raw_date)
             if created_at is None:
@@ -66,14 +155,12 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
                 failed_rows.append({"row": row_num, "id": ext_id, "reason": f"날짜 형식 오류: '{raw_date}'", "preview": text_preview})
                 continue
 
-        # sourceType 검증
-        source_type = str(row.get("sourceType", "inquiry")).strip().lower()
+        source_type = _get(row, "sourceType", "inquiry").lower()
         if source_type not in VALID_SOURCE_TYPES:
-            source_type = "inquiry"  # 오류 대신 기본값 처리
+            source_type = "inquiry"
 
-        # rating 검증
         rating = None
-        raw_rating = str(row.get("rating", "")).strip()
+        raw_rating = _get(row, "rating")
         if raw_rating and raw_rating.lower() != "nan":
             try:
                 rating = float(raw_rating)
@@ -87,8 +174,8 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
                 continue
 
         try:
-            product = str(row.get("productName", "")).strip()
-            branch = str(row.get("branchName", "")).strip()
+            product = _get(row, "productName")
+            branch = _get(row, "branchName")
             record = models.VocRecord(
                 user_id=user.id,
                 external_id=ext_id,
@@ -96,21 +183,20 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
                 source_type=source_type,
                 product_name=product if product and product.lower() != "nan" else None,
                 branch_name=branch if branch and branch.lower() != "nan" else None,
-                customer_text=str(row["customerText"]),
+                customer_text=customer_text,
                 rating=rating,
             )
             db.add(record)
             db.flush()
 
             result = analyze(record.customer_text, record.rating)
-            analysis = models.VocAnalysis(
+            db.add(models.VocAnalysis(
                 voc_record_id=record.id,
                 category=result["category"],
                 sentiment=result["sentiment"],
                 keywords=result["keywords"],
                 priority_score=result["priority_score"],
-            )
-            db.add(analysis)
+            ))
             success += 1
 
         except Exception as e:

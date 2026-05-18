@@ -89,7 +89,7 @@ export default function DashboardPage() {
             <StatCard label="긍정 피드백" value={data.sentiment_distribution.positive ?? 0} sub="건" color="text-green-500" />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             {/* 감정 분포 도넛 */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">감정 분포</h3>
