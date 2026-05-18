@@ -50,7 +50,7 @@ export default function UploadPage() {
   function handleFile(f: File) {
     const ok = f.name.endsWith(".csv") || f.name.endsWith(".xlsx") || f.name.endsWith(".xls");
     if (!ok) { setError("CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다."); return; }
-    if (f.size > 10 * 1024 * 1024) { setError("파일 크기는 10MB를 초과할 수 없습니다."); return; }
+    if (f.size > 100 * 1024 * 1024) { setError("파일 크기는 100MB를 초과할 수 없습니다."); return; }
     setFile(f); setError("");
   }
 
@@ -160,7 +160,7 @@ export default function UploadPage() {
               <>
                 <p className="text-4xl mb-3">📂</p>
                 <p className="text-gray-600 font-medium">CSV / Excel 파일을 드래그하거나 클릭하여 선택</p>
-                <p className="text-xs text-gray-400 mt-1">CSV, XLSX, XLS · 최대 10MB</p>
+                <p className="text-xs text-gray-400 mt-1">CSV, XLSX, XLS · 최대 100MB</p>
               </>
             )}
           </div>

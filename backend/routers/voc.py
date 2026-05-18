@@ -13,7 +13,8 @@ import models
 router = APIRouter(prefix="/voc", tags=["voc"])
 
 VALID_SOURCE_TYPES = {"review", "inquiry", "complaint"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+CHUNK_SIZE = 500
 
 # 내부 필드명 → 흔히 쓰이는 컬럼명 패턴 (자동 매핑 추천용)
 AUTO_DETECT: dict[str, list[str]] = {
@@ -67,7 +68,7 @@ async def _read_file(file: UploadFile) -> tuple[pd.DataFrame, bytes]:
         raise HTTPException(status_code=400, detail="CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다.")
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="파일 크기는 10MB를 초과할 수 없습니다.")
+        raise HTTPException(status_code=400, detail=f"파일 크기는 {MAX_FILE_SIZE // (1024 * 1024)}MB를 초과할 수 없습니다.")
     try:
         buf = io.BytesIO(content)
         if ext == ".csv":
@@ -97,6 +98,17 @@ async def preview_csv(
     }
 
 
+def _df_chunks(content: bytes, ext: str):
+    """파일을 CHUNK_SIZE 행씩 나눠서 DataFrame으로 yield — 메모리 절약."""
+    buf = io.BytesIO(content)
+    if ext == ".csv":
+        yield from pd.read_csv(buf, dtype=str, chunksize=CHUNK_SIZE)
+    else:
+        df = pd.read_excel(buf, dtype=str)
+        for start in range(0, len(df), CHUNK_SIZE):
+            yield df.iloc[start:start + CHUNK_SIZE].reset_index(drop=True)
+
+
 @router.post("/upload")
 async def upload_csv(
     file: UploadFile = File(...),
@@ -104,106 +116,119 @@ async def upload_csv(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """2단계: 매핑 정보를 받아 실제 분석·저장."""
-    df, _ = await _read_file(file)
+    """2단계: 매핑 정보를 받아 청크 단위로 분석·저장."""
+    filename = file.filename or ""
+    ext = next((e for e in SUPPORTED_EXTENSIONS if filename.lower().endswith(e)), None)
+    if ext is None:
+        raise HTTPException(status_code=400, detail="CSV 또는 Excel(xlsx/xls) 파일만 업로드 가능합니다.")
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail=f"파일 크기는 {MAX_FILE_SIZE // (1024 * 1024)}MB를 초과할 수 없습니다.")
 
     try:
         col_map: dict[str, str] = json.loads(mapping)
     except Exception:
         raise HTTPException(status_code=400, detail="mapping 형식이 올바르지 않습니다.")
 
-    # 매핑이 없으면 컬럼명 자동 감지로 폴백
+    # 컬럼 목록을 첫 청크로 확인
+    first_chunk = next(_df_chunks(content, ext), None)
+    if first_chunk is None or first_chunk.empty:
+        raise HTTPException(status_code=400, detail="파일에 데이터가 없습니다.")
+
+    columns = list(first_chunk.columns)
     if not col_map:
-        col_map = _auto_detect_mapping(list(df.columns))
+        col_map = _auto_detect_mapping(columns)
 
     def _get(row: pd.Series, field: str, default: str = "") -> str:
         csv_col = col_map.get(field)
         if csv_col and csv_col in row.index:
             return str(row[csv_col]).strip()
-        # 매핑 없으면 동일 이름 컬럼 직접 시도
         if field in row.index:
             return str(row[field]).strip()
         return default
 
     customer_text_col = col_map.get("customerText", "customerText")
-    if customer_text_col not in df.columns and "customerText" not in df.columns:
+    text_col = customer_text_col if customer_text_col in columns else "customerText"
+    if text_col not in columns:
         raise HTTPException(status_code=400, detail="고객 원문 컬럼을 지정해주세요.")
-
-    # 고객 원문 컬럼 기준으로 빈 행 제거
-    text_col = customer_text_col if customer_text_col in df.columns else "customerText"
-    df[text_col] = df[text_col].fillna("").str.strip()
-    df = df[df[text_col] != ""]
 
     success, failed = 0, 0
     failed_rows: list[dict] = []
+    row_offset = 2  # 헤더가 1행
 
-    for row_num, (_, row) in enumerate(df.iterrows(), start=2):
-        customer_text = _get(row, "customerText")
-        if not customer_text:
-            continue
+    for chunk in _df_chunks(content, ext):
+        chunk[text_col] = chunk[text_col].fillna("").str.strip()
 
-        ext_id = _get(row, "id") or f"ROW-{row_num}"
-        text_preview = customer_text[:60]
-
-        # 날짜 파싱
-        created_at = None
-        raw_date = _get(row, "createdAt")
-        if raw_date and raw_date.lower() != "nan":
-            created_at = _parse_date(raw_date)
-            if created_at is None:
-                failed += 1
-                failed_rows.append({"row": row_num, "id": ext_id, "reason": f"날짜 형식 오류: '{raw_date}'", "preview": text_preview})
+        for i, (_, row) in enumerate(chunk.iterrows()):
+            row_num = row_offset + i
+            customer_text = _get(row, "customerText")
+            if not customer_text or customer_text.lower() == "nan":
                 continue
 
-        source_type = _get(row, "sourceType", "inquiry").lower()
-        if source_type not in VALID_SOURCE_TYPES:
-            source_type = "inquiry"
+            ext_id = _get(row, "id") or f"ROW-{row_num}"
+            text_preview = customer_text[:60]
 
-        rating = None
-        raw_rating = _get(row, "rating")
-        if raw_rating and raw_rating.lower() != "nan":
-            try:
-                rating = float(raw_rating)
-                if not (1.0 <= rating <= 5.0):
-                    failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 범위 오류: {rating} (1~5)", "preview": text_preview})
+            created_at = None
+            raw_date = _get(row, "createdAt")
+            if raw_date and raw_date.lower() != "nan":
+                created_at = _parse_date(raw_date)
+                if created_at is None:
+                    failed += 1
+                    failed_rows.append({"row": row_num, "id": ext_id, "reason": f"날짜 형식 오류: '{raw_date}'", "preview": text_preview})
+                    continue
+
+            source_type = _get(row, "sourceType", "inquiry").lower()
+            if source_type not in VALID_SOURCE_TYPES:
+                source_type = "inquiry"
+
+            rating = None
+            raw_rating = _get(row, "rating")
+            if raw_rating and raw_rating.lower() != "nan":
+                try:
+                    rating = float(raw_rating)
+                    if not (1.0 <= rating <= 5.0):
+                        failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 범위 오류: {rating} (1~5)", "preview": text_preview})
+                        failed += 1
+                        continue
+                except ValueError:
+                    failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 형식 오류: '{raw_rating}'", "preview": text_preview})
                     failed += 1
                     continue
-            except ValueError:
-                failed_rows.append({"row": row_num, "id": ext_id, "reason": f"rating 형식 오류: '{raw_rating}'", "preview": text_preview})
+
+            try:
+                product = _get(row, "productName")
+                branch = _get(row, "branchName")
+                record = models.VocRecord(
+                    user_id=user.id,
+                    external_id=ext_id,
+                    created_at=created_at,
+                    source_type=source_type,
+                    product_name=product if product and product.lower() != "nan" else None,
+                    branch_name=branch if branch and branch.lower() != "nan" else None,
+                    customer_text=customer_text,
+                    rating=rating,
+                )
+                db.add(record)
+                db.flush()
+
+                result = analyze(record.customer_text, record.rating)
+                db.add(models.VocAnalysis(
+                    voc_record_id=record.id,
+                    category=result["category"],
+                    sentiment=result["sentiment"],
+                    keywords=result["keywords"],
+                    priority_score=result["priority_score"],
+                ))
+                success += 1
+
+            except Exception as e:
                 failed += 1
-                continue
+                failed_rows.append({"row": row_num, "id": ext_id, "reason": str(e), "preview": text_preview})
 
-        try:
-            product = _get(row, "productName")
-            branch = _get(row, "branchName")
-            record = models.VocRecord(
-                user_id=user.id,
-                external_id=ext_id,
-                created_at=created_at,
-                source_type=source_type,
-                product_name=product if product and product.lower() != "nan" else None,
-                branch_name=branch if branch and branch.lower() != "nan" else None,
-                customer_text=customer_text,
-                rating=rating,
-            )
-            db.add(record)
-            db.flush()
+        db.commit()  # 청크 단위 커밋 — 대용량 파일 중간 실패 시 손실 최소화
+        row_offset += len(chunk)
 
-            result = analyze(record.customer_text, record.rating)
-            db.add(models.VocAnalysis(
-                voc_record_id=record.id,
-                category=result["category"],
-                sentiment=result["sentiment"],
-                keywords=result["keywords"],
-                priority_score=result["priority_score"],
-            ))
-            success += 1
-
-        except Exception as e:
-            failed += 1
-            failed_rows.append({"row": row_num, "id": ext_id, "reason": str(e), "preview": text_preview})
-
-    db.commit()
     return {
         "total": success + failed,
         "success": success,
