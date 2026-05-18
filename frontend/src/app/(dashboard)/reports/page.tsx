@@ -93,7 +93,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">리포트</h2>
-          <p className="text-sm text-gray-500 mt-1">기간별 피드백 분석 리포트 — 경영진 의사결정용</p>
+          <p className="text-sm text-gray-500 mt-1">기간별 피드백 분석 리포트</p>
         </div>
         <button onClick={() => setShowForm(!showForm)}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
