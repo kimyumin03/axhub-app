@@ -261,11 +261,11 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* AI 개선 제안 */}
+            {/* 스마트 개선 제안 */}
             {selected.improvement_suggestions.length > 0 && (
               <div className="bg-white border border-gray-200 rounded-xl p-6">
                 <div className="flex items-center gap-2 mb-4">
-                  <h4 className="text-sm font-bold text-gray-700">AI 개선 제안</h4>
+                  <h4 className="text-sm font-bold text-gray-700">스마트 개선 제안</h4>
                   <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
                     {selected.improvement_suggestions.length}건
                   </span>

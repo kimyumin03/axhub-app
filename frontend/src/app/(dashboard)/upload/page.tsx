@@ -95,7 +95,7 @@ export default function UploadPage() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">CSV 업로드</h2>
-          <p className="text-sm text-gray-500 mt-1">고객 피드백 데이터를 CSV 파일로 업로드하면 AI가 자동으로 분류·분석합니다.</p>
+          <p className="text-sm text-gray-500 mt-1">고객 피드백 데이터를 업로드하면 자동으로 분류·분석합니다.</p>
         </div>
         <button onClick={downloadTemplate}
           className="flex items-center gap-2 text-sm text-blue-600 border border-blue-200 rounded-lg px-3 py-2 hover:bg-blue-50 transition-colors">
@@ -253,7 +253,7 @@ export default function UploadPage() {
             </button>
             <button onClick={handleUpload} disabled={!canUpload || uploading}
               className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 font-medium text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
-              {uploading ? <><span className="animate-spin">◌</span> AI 분석 중...</> : `업로드 및 AI 분석 시작 (${preview.total_rows.toLocaleString()}행)`}
+              {uploading ? <><span className="animate-spin">◌</span> 스마트 분석 중...</> : `업로드 및 스마트 분석 시작 (${preview.total_rows.toLocaleString()}행)`}
             </button>
           </div>
         </div>
