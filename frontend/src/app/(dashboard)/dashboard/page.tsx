@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { vocApi } from "@/lib/api";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
   LineChart, Line, CartesianGrid,
 } from "recharts";
 
@@ -45,9 +45,12 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+const TOP_N = 5;
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [trend, setTrend] = useState<"7" | "30">("7");
+  const [showAllCats, setShowAllCats] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -91,32 +94,78 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">감정 분포</h3>
               {sentimentPie.length === 0 ? <EmptyState message="데이터 없음" /> : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={sentimentPie} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
-                      {sentimentPie.map((entry) => <Cell key={entry.key} fill={SENTIMENT_COLORS[entry.key] ?? "#94a3b8"} />)}
-                    </Pie>
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={sentimentPie}
+                        cx="50%" cy="50%"
+                        innerRadius={55} outerRadius={85}
+                        dataKey="value"
+                        startAngle={90} endAngle={-270}
+                      >
+                        {sentimentPie.map((entry) => (
+                          <Cell key={entry.key} fill={SENTIMENT_COLORS[entry.key] ?? "#94a3b8"} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => [`${v}건`]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* 커스텀 범례 — 겹침 없이 수치 표시 */}
+                  <div className="flex justify-center gap-5 mt-2">
+                    {sentimentPie.map((entry) => (
+                      <div key={entry.key} className="flex items-center gap-1.5">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: SENTIMENT_COLORS[entry.key] ?? "#94a3b8" }}
+                        />
+                        <span className="text-xs text-gray-600">
+                          {entry.name}&nbsp;
+                          <span className="font-semibold text-gray-900">{entry.value}건</span>
+                          <span className="text-gray-400">
+                            &nbsp;({((entry.value / data.total) * 100).toFixed(0)}%)
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
-            {/* 카테고리별 막대 */}
+            {/* 카테고리별 막대 — TOP 5 기본, 전체 토글 */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">카테고리별 VOC</h3>
-              {categoryBar.length === 0 ? <EmptyState message="데이터 없음" /> : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={categoryBar} layout="vertical" margin={{ left: 10 }}>
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={70} />
-                    <Tooltip />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {categoryBar.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">카테고리별 피드백</h3>
+              {categoryBar.length === 0 ? <EmptyState message="데이터 없음" /> : (() => {
+                const displayed = showAllCats ? categoryBar : categoryBar.slice(0, TOP_N);
+                const barHeight = Math.max(160, displayed.length * 40);
+                return (
+                  <>
+                    <ResponsiveContainer width="100%" height={barHeight}>
+                      <BarChart data={displayed} layout="vertical" margin={{ left: 10, right: 20 }}>
+                        <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
+                        <Tooltip formatter={(v) => [`${v}건`]} />
+                        <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                          {displayed.map((_, i) => (
+                            <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {categoryBar.length > TOP_N && (
+                      <button
+                        onClick={() => setShowAllCats(!showAllCats)}
+                        className="mt-3 text-xs text-blue-500 hover:text-blue-700 hover:underline transition-colors"
+                      >
+                        {showAllCats
+                          ? "접기"
+                          : `+ ${categoryBar.length - TOP_N}개 카테고리 더 보기`}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
